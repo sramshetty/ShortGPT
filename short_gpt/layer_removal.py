@@ -1,9 +1,20 @@
-import torch
+from collections import OrderedDict
 
-import transformers
+import torch.nn as nn
 
 
-def layer_removal(model, layers_to_remove={}):
+def layer_removal(
+    model: nn.Module,
+    layers_to_remove: OrderedDict
+):
+    """
+    Generic removal implementation
+    """
 
     for layer_name, layer_idx in layers_to_remove.items():
-        del getattr(model, layer_name)[layer_idx]
+        modules = layer_name.split(".")
+        mod = model
+        for m in modules[:-1]:
+            mod = getattr(mod, m)
+        
+        del getattr(mod, modules[-1])[layer_idx]
