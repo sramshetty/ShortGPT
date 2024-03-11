@@ -1,11 +1,7 @@
 from typing import List, Optional, Tuple
-from llama.model import ModelArgs
-from llama.tokenizer import Tokenizer
 
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 
 from llama import Transformer
 
@@ -47,10 +43,11 @@ class TransformerWrapper(Transformer):
         Args:
             tokens (torch.Tensor): Input token indices.
             start_pos (int): Starting position for attention caching.
+            return_hiddens (bool): Whether to return hidden states.
 
         Returns:
             torch.Tensor: Output logits after applying the Transformer model.
-
+            (Optional) List[torch.Tensor]: Hidden states for each transformer block.
         """
         _bsz, seqlen = tokens.shape
         h = self.tok_embeddings(tokens)
@@ -94,10 +91,10 @@ class ShortLlama():
     def __init__(self, llama):
         self.llama = llama
         checkpoint = self.llama.model.state_dict()
-        self.llama.model = TransformerWrapper(self.llama.model.params)
+        self.llama.model = TransformerWrapper(self.llama.model.params)  # wrap transformer to collect hidden states
         self.llama.model.load_state_dict(checkpoint, strict=False)
 
-        self.importances = [0 for _ in self.llama.model.layers]
+        self.importances = [0 for _ in self.llama.model.layers]  # layer-wise importance scores
 
     def remove_layers(
         self,
@@ -108,6 +105,7 @@ class ShortLlama():
             assert self.importances, "Need to compute importances with eval_importance()"
             layers_to_remove = np.argsort(np.array(self.importances))[:num_layers].tolist()
 
+        # remove layers in reverse to avoid indexing errors
         for layer_idx in sorted(layers_to_remove, reverse=True):
             try:
                 del self.llama.model.layers[layer_idx]
@@ -124,23 +122,14 @@ class ShortLlama():
         max_gen_len: int,
     ) -> Tuple[List[List[int]], Optional[List[List[float]]]]:
         """
-        Generate text sequences based on provided prompts using the language generation model.
+        Computes layer-wise importances over input tokens.
 
         Args:
             prompt_tokens (List[List[int]]): List of tokenized prompts, where each prompt is represented as a list of integers.
             max_gen_len (int): Maximum length of the generated text sequence.
-            temperature (float, optional): Temperature value for controlling randomness in sampling. Defaults to 0.6.
-            top_p (float, optional): Top-p probability threshold for nucleus sampling. Defaults to 0.9.
-            logprobs (bool, optional): Flag indicating whether to compute token log probabilities. Defaults to False.
-            echo (bool, optional): Flag indicating whether to include prompt tokens in the generated output. Defaults to False.
 
         Returns:
-            Tuple[List[List[int]], Optional[List[List[float]]]]: A tuple containing generated token sequences and, if logprobs is True, corresponding token log probabilities.
-
-        Note:
-            This method uses the provided prompts as a basis for generating text. It employs nucleus sampling to produce text with controlled randomness.
-            If logprobs is True, token log probabilities are computed for each generated token.
-
+            None
         """
         params = self.llama.model.params
         bsz = len(prompt_tokens)

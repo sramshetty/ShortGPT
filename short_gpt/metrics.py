@@ -6,8 +6,8 @@ def block_influence(
     output_hidden_state: torch.Tensor
 ):
     """
-        input_hidden_state: B, S, D
-        output_hidden_state: B, S, D
+    input_hidden_state: B, S, D
+    output_hidden_state: B, S, D
     """
     _, _, d = input_hidden_state.shape
     input_hidden_state = input_hidden_state.reshape(-1, d)

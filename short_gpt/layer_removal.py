@@ -17,4 +17,7 @@ def layer_removal(
         for m in modules[:-1]:
             mod = getattr(mod, m)
         
-        del getattr(mod, modules[-1])[layer_idx]
+        if layer_idx is None:
+            del getattr(mod, modules[-1])
+        else:
+            del getattr(mod, modules[-1])[layer_idx]
