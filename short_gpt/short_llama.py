@@ -155,6 +155,7 @@ class ShortLlama():
             tokens[k, : len(t)] = torch.tensor(t, dtype=torch.long, device="cuda")
 
         prev_pos = 0
+        eos_reached = torch.tensor([False] * bsz, device="cuda")
         input_text_mask = tokens != pad_id
         if min_prompt_len == total_len:
             _, hiddens = self.llama.model.forward(tokens, prev_pos, return_hiddens=True)
