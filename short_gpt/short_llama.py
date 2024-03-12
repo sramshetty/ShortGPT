@@ -114,12 +114,19 @@ class ShortLlama():
                 return []
         
         return layers_to_remove
+    
+    def compute_bi(self, hiddens):
+        for i in range(len(hiddens)-1):
+            h_pair = hiddens[i:i+2]
+            self.importances[i] += block_influence(h_pair[0], h_pair[1]).sum().cpu().item()
 
     @torch.inference_mode()
     def eval_importance(
         self,
         prompt_tokens: List[List[int]],
         max_gen_len: int,
+        temperature: float = 0.6,
+        top_p: float = 0.9
     ) -> Tuple[List[List[int]], Optional[List[List[float]]]]:
         """
         Computes layer-wise importances over input tokens.
@@ -127,6 +134,8 @@ class ShortLlama():
         Args:
             prompt_tokens (List[List[int]]): List of tokenized prompts, where each prompt is represented as a list of integers.
             max_gen_len (int): Maximum length of the generated text sequence.
+            temperature (float, optional): Temperature value for controlling randomness in sampling. Defaults to 0.6.
+            top_p (float, optional): Top-p probability threshold for nucleus sampling. Defaults to 0.9.
 
         Returns:
             None
@@ -146,11 +155,31 @@ class ShortLlama():
             tokens[k, : len(t)] = torch.tensor(t, dtype=torch.long, device="cuda")
 
         prev_pos = 0
+        input_text_mask = tokens != pad_id
         if min_prompt_len == total_len:
             _, hiddens = self.llama.model.forward(tokens, prev_pos, return_hiddens=True)
+            self.compute_bi(hiddens)
+        
+        for cur_pos in range(min_prompt_len, total_len):
+            logits, hiddens = self.llama.model.forward(tokens[:, prev_pos:cur_pos], prev_pos, return_hiddens=True)
+            self.compute_bi(hiddens)
+            if temperature > 0:
+                probs = torch.softmax(logits[:, -1] / temperature, dim=-1)
+                next_token = sample_top_p(probs, top_p)
+            else:
+                next_token = torch.argmax(logits[:, -1], dim=-1)
 
-            for i in range(len(hiddens)-1):
-                h_pair = hiddens[i:i+2]
-                self.importances[i] += block_influence(h_pair[0], h_pair[1]).sum().cpu().item()
+            next_token = next_token.reshape(-1)
+            # only replace token if prompt has already been generated
+            next_token = torch.where(
+                input_text_mask[:, cur_pos], tokens[:, cur_pos], next_token
+            )
+            tokens[:, cur_pos] = next_token
+            eos_reached |= (~input_text_mask[:, cur_pos]) & (
+                next_token == self.tokenizer.eos_id
+            )
+            prev_pos = cur_pos
+            if all(eos_reached):
+                break
         
         return
