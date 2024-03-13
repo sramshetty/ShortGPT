@@ -1,14 +1,14 @@
-from typing import List, Optional, Tuple
+from typing import List
 
 import numpy as np
 import torch
 
-from llama import Transformer
+from llama import Llama, Transformer
 
 from metrics import *
 
 
-def sample_top_p(probs, p):
+def sample_top_p(probs: torch.Tensor, p: float):
     """
     Perform top-p (nucleus) sampling on a probability distribution.
 
@@ -88,7 +88,7 @@ class TransformerWrapper(Transformer):
 
 class ShortLlama():
 
-    def __init__(self, llama):
+    def __init__(self, llama: Llama):
         self.llama = llama
         checkpoint = self.llama.model.state_dict()
         self.llama.model = TransformerWrapper(self.llama.model.params)  # wrap transformer to collect hidden states
@@ -98,8 +98,8 @@ class ShortLlama():
 
     def remove_layers(
         self,
-        layers_to_remove=[],
-        num_layers=None,
+        layers_to_remove: List[int] = [],
+        num_layers: int = 0,
     ):
         if not layers_to_remove and num_layers:
             assert self.importances, "Need to compute importances with eval_importance()"
@@ -115,7 +115,7 @@ class ShortLlama():
         
         return layers_to_remove
     
-    def compute_bi(self, hiddens):
+    def compute_bi(self, hiddens: List[torch.Tensor]):
         for i in range(len(hiddens)-1):
             h_pair = hiddens[i:i+2]
             self.importances[i] += block_influence(h_pair[0], h_pair[1]).sum().cpu().item()
@@ -127,7 +127,7 @@ class ShortLlama():
         max_gen_len: int,
         temperature: float = 0.6,
         top_p: float = 0.9
-    ) -> Tuple[List[List[int]], Optional[List[List[float]]]]:
+    ):
         """
         Computes layer-wise importances over input tokens.
 
