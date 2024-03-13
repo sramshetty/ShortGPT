@@ -131,6 +131,8 @@ class ShortLlama():
         """
         Computes layer-wise importances over input tokens.
 
+        NOTE: Paper performs no generation during importance computation, which suggests a `max_gen_len`= 0.
+
         Args:
             prompt_tokens (List[List[int]]): List of tokenized prompts, where each prompt is represented as a list of integers.
             max_gen_len (int): Maximum length of the generated text sequence.
@@ -157,13 +159,9 @@ class ShortLlama():
         prev_pos = 0
         eos_reached = torch.tensor([False] * bsz, device="cuda")
         input_text_mask = tokens != pad_id
-        if min_prompt_len == total_len:
-            _, hiddens = self.llama.model.forward(tokens, prev_pos, return_hiddens=True)
-            self.compute_bi(hiddens)
         
         for cur_pos in range(min_prompt_len, total_len):
-            logits, hiddens = self.llama.model.forward(tokens[:, prev_pos:cur_pos], prev_pos, return_hiddens=True)
-            self.compute_bi(hiddens)
+            logits = self.llama.model.forward(tokens[:, prev_pos:cur_pos], prev_pos)
             if temperature > 0:
                 probs = torch.softmax(logits[:, -1] / temperature, dim=-1)
                 next_token = sample_top_p(probs, top_p)
@@ -177,10 +175,14 @@ class ShortLlama():
             )
             tokens[:, cur_pos] = next_token
             eos_reached |= (~input_text_mask[:, cur_pos]) & (
-                next_token == self.tokenizer.eos_id
+                next_token == self.llama.tokenizer.eos_id
             )
             prev_pos = cur_pos
             if all(eos_reached):
                 break
+        
+        # compute block influence over full sequences rather than each token
+        _, hiddens = self.llama.model.forward(tokens, 0, return_hiddens=True)
+        self.compute_bi(hiddens)
         
         return
