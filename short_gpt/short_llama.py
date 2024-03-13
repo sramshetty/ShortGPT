@@ -124,7 +124,7 @@ class ShortLlama():
     def eval_importance(
         self,
         prompt_tokens: List[List[int]],
-        max_gen_len: int,
+        max_gen_len: int = 0,
         temperature: float = 0.6,
         top_p: float = 0.9
     ):
@@ -181,7 +181,7 @@ class ShortLlama():
             if all(eos_reached):
                 break
         
-        # compute block influence over full sequences rather than each token
+        # compute block influence over full sequences rather than at each token
         _, hiddens = self.llama.model.forward(tokens, 0, return_hiddens=True)
         self.compute_bi(hiddens)
         
