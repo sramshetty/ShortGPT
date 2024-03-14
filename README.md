@@ -23,8 +23,8 @@ This Implementation: [24, 23, 26, 25, 27, 28, 22, 29, 21]
 Same layers but different order.
 
 ### TODO:
-- [ ] Is order significant?
-- [ ] Add more models and metrics
+- [x] Is order significant -> Authors mention that layer order varies between datasets but their relative ordering suggests "similar levels of importance" [link](https://huggingface.co/papers/2403.03853#65f028667c916f24c80e93b3).
+- [x] Add more models and metrics -> Add experimental support for HF models on this [branch](https://github.com/sramshetty/ShortGPT/tree/hf-models). 
 
 ### Citations
 ```bibtex
