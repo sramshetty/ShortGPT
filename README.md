@@ -18,7 +18,7 @@ An unofficial implementation of ["ShortGPT: Layers in Large Language Models are 
 Comparison of layers removed on Llama-2-7B (9 least important layers):
 
 Paper: [27, 26, 25, 28, 24, 29, 23, 21, 22] \
-This Implementation: [24, 23, 26, 25, 27, 28, 22, 29, 21]
+This Implementation: [25, 27, 24, 26, 28, 29, 23, 22, 21]
 
 Same layers but different order.
 
