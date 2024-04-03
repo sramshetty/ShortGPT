@@ -106,12 +106,17 @@ class ShortLlama():
 
     def remove_layers(
         self,
-        layers_to_remove: List[int] = [],
-        num_layers: int = 0,
+        layers_to_remove: Optional[List[int]] = [],
+        angular: Optional[bool] = False
     ):
-        if not layers_to_remove and num_layers:
+        if angular:
             assert self.importances, "Need to compute importances with eval_importance()"
-            layers_to_remove = np.argsort(np.array(self.importances))[:num_layers].tolist()
+            assert self.n_prune_layers, "Need number of layers to prune, set `n_prune_layers`"
+            start_layer = np.argsort(np.array(self.importances[:-self.n_prune_layers+1]))[0]
+            layers_to_remove = list(range(start_layer, start_layer + self.n_prune_layers))
+        elif not layers_to_remove and self.n_prune_layers:
+            assert self.importances, "Need to compute importances with eval_importance()"
+            layers_to_remove = np.argsort(np.array(self.importances))[:self.n_prune_layers].tolist()
 
         # remove layers in reverse to avoid indexing errors
         for layer_idx in sorted(layers_to_remove, reverse=True):
@@ -123,29 +128,47 @@ class ShortLlama():
         
         return layers_to_remove
     
-    def compute_bi(self, hiddens: List[torch.Tensor]):
-        for i in range(len(hiddens)-1):
-            h_pair = hiddens[i:i+2]
-            self.importances[i] += block_influence(h_pair[0], h_pair[1]).sum().cpu().item()
+    def compute_bi(self, hiddens: List[torch.Tensor], angular: bool):
+        n = 1
+        if angular:
+            assert self.n_prune_layers is not None, "Set number of layers to prune to use angular importance"
+            n = self.n_prune_layers
+
+        for i in range(len(hiddens) - n):
+            in_hidden = hiddens[i]
+            out_hidden = hiddens[i+n]
+            if angular:
+                # use only last token for angular distance as described in section 3.2
+                # https://arxiv.org/pdf/2403.17887.pdf
+                in_hidden = in_hidden[:,-1:]
+                out_hidden = out_hidden[:,-1:]
+            
+            self.importances[i] += block_influence(
+                in_hidden,
+                out_hidden,
+                angular=angular
+            ).sum().cpu().item()
 
     @torch.inference_mode()
     def eval_importance(
         self,
         prompt_tokens: List[List[int]],
-        max_gen_len: int = 0,
-        temperature: float = 0.6,
-        top_p: float = 0.9
+        max_gen_len: Optional[int] = 0,
+        temperature: Optional[float] = 0.6,
+        top_p: Optional[float] = 0.9,
+        angular: Optional[bool] = False
     ):
         """
         Computes layer-wise importances over input tokens.
 
-        NOTE: Paper performs no generation during importance computation, which suggests a `max_gen_len`= 0.
+        NOTE: ShortGPT paper performs no generation during importance computation, which suggests a `max_gen_len`= 0.
 
         Args:
             prompt_tokens (List[List[int]]): List of tokenized prompts, where each prompt is represented as a list of integers.
-            max_gen_len (int): Maximum length of the generated text sequence.
-            temperature (float, optional): Temperature value for controlling randomness in sampling. Defaults to 0.6.
-            top_p (float, optional): Top-p probability threshold for nucleus sampling. Defaults to 0.9.
+            (Optional) max_gen_len (int): Maximum length of the generated text sequence.
+            (Optional) temperature (float): Temperature value for controlling randomness in sampling. Defaults to 0.6.
+            (Optional) top_p (float): Top-p probability threshold for nucleus sampling. Defaults to 0.9.
+            (Optional) angular (bool): Whether to ues angular distance. Defaults to False.
 
         Returns:
             None
@@ -191,6 +214,6 @@ class ShortLlama():
         
         # compute block influence over full sequences rather than at each token
         _, hiddens = self.llama.model.forward(tokens, 0, return_hiddens=True)
-        self.compute_bi(hiddens)
+        self.compute_bi(hiddens, angular=angular)
         
         return

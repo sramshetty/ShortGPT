@@ -3,7 +3,8 @@ import torch
 
 def block_influence(
     input_hidden_state: torch.Tensor,
-    output_hidden_state: torch.Tensor
+    output_hidden_state: torch.Tensor,
+    angular=False,
 ):
     """
     input_hidden_state: B, S, D
@@ -17,5 +18,9 @@ def block_influence(
     norm_output = output_hidden_state.norm(dim=-1, keepdim=True)
 
     sim = (input_hidden_state @ output_hidden_state.T) / (norm_input * norm_output)
+    sim = sim.diagonal().nan_to_num(nan=0.5)
 
-    return 1 - sim.diagonal().nan_to_num(nan=0.5)
+    if angular:
+        return (torch.arccos(sim) / torch.pi)
+
+    return 1 - sim
