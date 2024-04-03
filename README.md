@@ -12,19 +12,21 @@ An unofficial implementation of ["ShortGPT: Layers in Large Language Models are 
 - Sum importance values across layers while inferencing on [pg19](https://huggingface.co/datasets/pg19).
   - Dataset can be slow to load from huggingface so you may want to use an alternative.
 - Use sorted layer-wise importance values to determine which layers are least important and subject to removal.
+- Demonstrate "model-healing" with Mistral-7B-v0.1 described in ["The Unreasonable Ineffectiveness of the Deeper Layers"](https://arxiv.org/abs/2403.17887), where finetuning with LoRA after layer removal can recover downstream model performance. 
 
 
 ### Results
 Comparison of layers removed on Llama-2-7B (9 least important layers):
 
 Paper: [27, 26, 25, 28, 24, 29, 23, 21, 22] \
-This Implementation: [24, 23, 26, 25, 27, 28, 22, 29, 21]
+This Implementation: [25, 27, 24, 26, 28, 29, 23, 22, 21]
 
 Same layers but different order.
 
 ### TODO:
-- [ ] Is order significant?
-- [ ] Add more models and metrics
+- [x] Is order significant -> Authors mention that layer order varies between datasets but their relative ordering suggests "similar levels of importance" [link](https://huggingface.co/papers/2403.03853#65f028667c916f24c80e93b3).
+- [x] Add more models and metrics -> Add experimental support for HF models on this [branch](https://github.com/sramshetty/ShortGPT/tree/hf-models).
+  - [x] Demonstrate model healing using HuggingFace model   
 
 ### Citations
 ```bibtex
@@ -33,6 +35,15 @@ Same layers but different order.
     author={Xin Men and Mingyu Xu and Qingyu Zhang and Bingning Wang and Hongyu Lin and Yaojie Lu and Xianpei Han and Weipeng Chen},
     year={2024},
     eprint={2403.03853},
+    archivePrefix={arXiv},
+    primaryClass={cs.CL}
+}
+
+@misc{gromov2024unreasonable,
+    title={The Unreasonable Ineffectiveness of the Deeper Layers}, 
+    author={Andrey Gromov and Kushal Tirumala and Hassan Shapourian and Paolo Glorioso and Daniel A. Roberts},
+    year={2024},
+    eprint={2403.17887},
     archivePrefix={arXiv},
     primaryClass={cs.CL}
 }
