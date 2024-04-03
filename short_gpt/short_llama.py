@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 import torch
@@ -35,15 +35,22 @@ def sample_top_p(probs: torch.Tensor, p: float):
 
 
 class TransformerWrapper(Transformer):
+    def __init__(self, model):
+        self.__dict__ = model.__dict__.copy()
+
     @torch.inference_mode()
-    def forward(self, tokens: torch.Tensor, start_pos: int, return_hiddens: bool = False):
+    def forward(
+        self,
+        tokens: torch.Tensor,
+        start_pos: int,
+        return_hiddens: Optional[bool] = False):
         """
         Perform a forward pass through the Transformer model.
 
         Args:
             tokens (torch.Tensor): Input token indices.
             start_pos (int): Starting position for attention caching.
-            return_hiddens (bool): Whether to return hidden states.
+            (Optional) return_hiddens (bool): Whether to return hidden states. Defaults to False.
 
         Returns:
             torch.Tensor: Output logits after applying the Transformer model.
@@ -88,12 +95,13 @@ class TransformerWrapper(Transformer):
 
 class ShortLlama():
 
-    def __init__(self, llama: Llama):
+    def __init__(self, llama: Llama, n_prune_layers: Optional[int] = None):
+        checkpoint = llama.model.state_dict()
+        llama.model = TransformerWrapper(llama.model)  # wrap transformer to collect hidden states
+        llama.model.load_state_dict(checkpoint, strict=False)
         self.llama = llama
-        checkpoint = self.llama.model.state_dict()
-        self.llama.model = TransformerWrapper(self.llama.model.params)  # wrap transformer to collect hidden states
-        self.llama.model.load_state_dict(checkpoint, strict=False)
 
+        self.n_prune_layers = n_prune_layers
         self.importances = [0 for _ in self.llama.model.layers]  # layer-wise importance scores
 
     def remove_layers(
