@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 import torch
@@ -10,7 +10,15 @@ from metrics import *
 
 class ShortHFModel():
 
-    def __init__(self, model_name: str, layers_path: str):
+    def __init__(self, model_name: str, layers_path: str, n_prune_layers: Optional[int] = None):
+        """
+        HuggingFace Model Wrapper
+
+        Args:
+            model_name (str): HuggingFace model name
+            layers_path (str): String in dot notation demonstrating how to access layers of the model. Ex: "model.layers"
+            (Optional) n_prune_layers (int): Number of layers to prune. Defaults to None.
+        """
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.tokenizer.pad_token = self.tokenizer.eos_token
         self.model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.float16)
@@ -22,16 +30,23 @@ class ShortHFModel():
         for m in modules:
             mod = getattr(mod, m)
         self.layers = mod
+
+        self.n_prune_layers = n_prune_layers
         self.importances = [0 for _ in self.layers]  # layer-wise importance scores
 
     def remove_layers(
         self,
-        layers_to_remove: List[int] = [],
-        num_layers: int = 0,
+        layers_to_remove: Optional[List[int]] = [],
+        angular: Optional[bool] = False
     ):
-        if not layers_to_remove and num_layers:
+        if angular:
             assert self.importances, "Need to compute importances with eval_importance()"
-            layers_to_remove = np.argsort(np.array(self.importances))[:num_layers].tolist()
+            assert self.n_prune_layers, "Need number of layers to prune, set `n_prune_layers`"
+            start_layer = np.argsort(np.array(self.importances[:-self.n_prune_layers+1]))[0]
+            layers_to_remove = list(range(start_layer, start_layer + self.n_prune_layers))
+        elif not layers_to_remove and self.n_prune_layers:
+            assert self.importances, "Need to compute importances with eval_importance()"
+            layers_to_remove = np.argsort(np.array(self.importances))[:self.n_prune_layers].tolist()
 
         # remove layers in reverse to avoid indexing errors
         for layer_idx in sorted(layers_to_remove, reverse=True):
@@ -43,10 +58,26 @@ class ShortHFModel():
         
         return layers_to_remove
     
-    def compute_bi(self, hiddens: List[torch.Tensor]):
-        for i in range(len(hiddens)-1):
-            h_pair = hiddens[i:i+2]
-            self.importances[i] += block_influence(h_pair[0], h_pair[1]).sum().cpu().item()
+    def compute_bi(self, hiddens: List[torch.Tensor], angular: bool):
+        n = 1
+        if angular:
+            assert self.n_prune_layers is not None, "Set number of layers to prune to use angular importance"
+            n = self.n_prune_layers
+
+        for i in range(len(hiddens) - n):
+            in_hidden = hiddens[i]
+            out_hidden = hiddens[i+n]
+            if angular:
+                # use only last token for angular distance as described in section 3.2
+                # https://arxiv.org/pdf/2403.17887.pdf
+                in_hidden = in_hidden[:,-1:]
+                out_hidden = out_hidden[:,-1:]
+            
+            self.importances[i] += block_influence(
+                in_hidden,
+                out_hidden,
+                angular=angular
+            ).sum().cpu().item()
 
     @torch.inference_mode()
     def eval_importance(
@@ -56,23 +87,26 @@ class ShortHFModel():
         stride: int = 256,
         max_gen_len: int = 0,
         temperature: float = 0.6,
-        top_p: float = 0.9
+        top_p: float = 0.9,
+        angular: Optional[bool] = False
     ):
         """
         Computes layer-wise importances over input texts.
 
-        NOTE: Paper performs no generation during importance computation, which suggests a `max_gen_len`= 0.
+        NOTE: ShortGPT paper performs no generation during importance computation, which suggests a `max_gen_len`= 0.
 
         Args:
             prompts (List[str]): List of prompts.
-            max_gen_len (int): Maximum length of the generated text sequence.
-            temperature (float, optional): Temperature value for controlling randomness in sampling. Defaults to 0.6.
-            top_p (float, optional): Top-p probability threshold for nucleus sampling. Defaults to 0.9.
+            max_seq_len (int): Maximum sequence length for model input, the sliding window size.
+            (Optional) stride (int): Number of tokens to skip/shift between each window inference.
+            (Optional) max_gen_len (int): Maximum length of the generated text sequence.
+            (Optional) temperature (float): Temperature value for controlling randomness in sampling. Defaults to 0.6.
+            (Optional) top_p (float): Top-p probability threshold for nucleus sampling. Defaults to 0.9.
+            (Optional) angular (bool): Whether to ues angular distance. Defaults to False.
 
         Returns:
             None
         """
-        
         prompt_tokens = self.tokenizer(
             prompts,
             padding=True,
@@ -109,7 +143,7 @@ class ShortHFModel():
                     return_dict_in_generate=True,
                 )
             
-            self.compute_bi(outputs.hidden_states)
+            self.compute_bi(outputs.hidden_states, angular=angular)
 
         return
 
