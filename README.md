@@ -6,6 +6,7 @@ Unofficial implementations of:
 ### To Use
 - Follow Llama 2 setup found [here](https://github.com/facebookresearch/llama).
 - Reference `short_gpt/short_llama.ipynb` for necessary function calls.
+- For HuggingFace models, reference this [branch](https://github.com/sramshetty/ShortGPT/tree/hf-models).
 
 
 ### Details
