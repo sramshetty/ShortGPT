@@ -21,6 +21,7 @@ def block_influence(
     sim = sim.diagonal().nan_to_num(nan=0.5)
 
     if angular:
+        sim = torch.clamp(sim, -1.0, 1.0)
         return (torch.arccos(sim) / torch.pi)
 
     return 1 - sim
